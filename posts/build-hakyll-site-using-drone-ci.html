@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>zebraNeon 的小站 - 使用 Drone CI 构建部署 Hakyll 网站</title>
+        <link rel="stylesheet" href="../css/default.css" />
+    </head>
+    <body>
+        <header>
+            <div class="logo">
+                <a href="../">zebraNeon 的小站</a>
+            </div>
+            <nav>
+                <a href="../about.html">关于</a>
+                <a href="../archive.html">归档</a>
+            </nav>
+        </header>
+
+        <main role="main">
+            <h1>使用 Drone CI 构建部署 Hakyll 网站</h1>
+            <article>
+    <section class="header">
+        初次发布于 2022-05-17
+        
+    </section>
+    <section>
+        <p>对于 Hakyll 这类静态网站构建系统来说，写完的没有写完的网站文章、网站的样式和静态资源等有关的一切都可以方便地使用 Git 进行管理。出于隐私和信息安全方面的考虑，我自建了 <a href="https://gitea.io">Gitea</a> 来管理这个小网站的源码，也自建了 <a href="https://www.drone.io/">Drone CI</a> 来自动构建和发布网站更新。怎么搭建这两个服务可以参考 <a href="https://docs.gitea.io/en-us/install-with-docker/">这篇文档</a> 和 <a href="https://docs.drone.io/server/provider/gitea/">这篇文档</a> 以及 <a href="https://github.com/zebraNeon/dockerfiles">我的 dockerfiles 仓库</a> 里的 docker-compose 文件，这篇文章将会记录一些官方文档没有涉及到的东西。</p>
+<h2 id="为-hakyll-网站定义-drone-ci-管道">为 Hakyll 网站定义 Drone CI 管道</h2>
+<p>在网站 Git 仓库的根目录下新建包含如下内容的 <code>.drone.yml</code> 文件：</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="pp">---</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">kind</span><span class="kw">:</span><span class="at"> pipeline</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">type</span><span class="kw">:</span><span class="at"> docker</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">name</span><span class="kw">:</span><span class="at"> default</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">steps</span><span class="kw">:</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> build</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> haskell:8.10.7-slim</span><span class="co">  # current lts</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">commands</span><span class="kw">:</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> stack build</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> stack exec site build</span></span></code></pre></div>
+<p>以上就是一个最基础的构建管道定义了，上述管道在执行的时候会调用 Docker Runner 拉取 <a href="https://hub.docker.com/_/haskell">镜像</a> 并在容器内使用 <a href="https://docs.haskellstack.org/en/stable/README/">stack</a> 构建网站。我现在在用 GitHub Pages 托管网站，所以我找来了 <a href="https://plugins.drone.io/plugins/gh-pages">gh-pages 插件</a> 来实现使用 CI 发布网站更新。我们需要在 <code>.drone.yml</code> 的 <code>build</code> 这一步下方添加如下内容：</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> publish</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> plugins/gh-pages</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">settings</span><span class="kw">:</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">target_branch</span><span class="kw">:</span><span class="at"> gh-pages</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">pages_directory</span><span class="kw">:</span><span class="at"> public/</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">remote_url</span><span class="kw">:</span><span class="at"> https://github.com/zebraNeon/zebraNeon.github.io.git</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">username</span><span class="kw">:</span><span class="at"> zebraNeon</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">password</span><span class="kw">:</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> gh_token</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">when</span><span class="kw">:</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">event</span><span class="kw">:</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> promote</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">target</span><span class="kw">:</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> gh-pages</span></span></code></pre></div>
+<p>其中 <code>when</code> 对应的值定义了 <code>publish</code> 这一步仅会在项目被 <a href="https://docs.drone.io/promote/">promote</a> 到 <code>gh-pages</code> 时执行。我们可以在 Drone 后台的构建详情页面的右上角找到 promote 按键（我用的这一版后台上这个按钮是在详情菜单里），然后在 <code>target</code> 内填上 <code>gh-pages</code> 就能触发一次带有 <code>build</code> 和 <code>publish</code> 两阶段的构建了。（如果没有这个按钮或者详情菜单之类的，可能是 Drone 后台处于未登录状态。）<code>from_secret: gh_token</code> 表示系统将会在执行构建时从仓库设置的 Secrets 中拿取这一敏感信息的值，详细信息可以参考 <a href="https://docs.drone.io/secret/repository/">这篇文档</a>。</p>
+<h2 id="为构建管道添加缓存">为构建管道添加缓存</h2>
+<p>Drone CI 没有自带的缓存构建文件功能，需要通过插件来实现。我选择了 <a href="https://plugins.drone.io/plugins/cache">Meltwater 开发的缓存插件</a>，这个插件可以将构建文件缓存以模板字符串为键储存到 S3 服务或文件系统中。在这里我自建了 <a href="https://min.io/">MinIO</a> 这一 S3 兼容的储存服务用来存放构建缓存。由于插件自身限制，我们在创建 MinIO 储存桶时需要为桶指定区域（使用 AWS 代号），不然插件将无法正常工作。将 <code>.drone.yml</code> 中的步骤定义重写为如下内容：</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">steps</span><span class="kw">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> restore-cache</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> meltwater/drone-cache:dev</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">environment</span><span class="kw">:</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">AWS_ACCESS_KEY_ID</span><span class="kw">:</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> drone_cache_access_key</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">AWS_SECRET_ACCESS_KEY</span><span class="kw">:</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> drone_cache_secret_key</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">settings</span><span class="kw">:</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">restore</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">cache_key</span><span class="kw">:</span><span class="at"> </span><span class="st">'{{ .Repo.Name }}-{{ .Commit.Branch }}'</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">endpoint</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-HOST&gt;:9000</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">region</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-REGION&gt;</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">bucket</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-BUCKET&gt;</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path_style</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">mount</span><span class="kw">:</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> .stack</span><span class="co">  # i.e. &lt;workspace-path&gt;/.stack</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> .stack-work</span><span class="co">  # i.e. &lt;workspace-path&gt;/.stack</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> build</span></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> haskell:8.10.7-slim</span><span class="co">  # current lts</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">environment</span><span class="kw">:</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">STACK_ROOT</span><span class="kw">:</span><span class="at"> /drone/src/.stack</span><span class="co">  # /drone/src is the default workspace-path</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">commands</span><span class="kw">:</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> stack build</span></span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> stack exec site build</span></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> rebuild-cache</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> meltwater/drone-cache:dev</span></span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">environment</span><span class="kw">:</span></span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">AWS_ACCESS_KEY_ID</span><span class="kw">:</span></span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> drone_cache_access_key</span></span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">AWS_SECRET_ACCESS_KEY</span><span class="kw">:</span></span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> drone_cache_secret_key</span></span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">settings</span><span class="kw">:</span></span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">rebuild</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">cache_key</span><span class="kw">:</span><span class="at"> </span><span class="st">'{{ .Repo.Name }}-{{ .Commit.Branch }}'</span></span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">endpoint</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-HOST&gt;:9000</span></span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">region</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-REGION&gt;</span></span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">bucket</span><span class="kw">:</span><span class="at"> &lt;YOUR-MINIO-BUCKET&gt;</span></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">path_style</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">mount</span><span class="kw">:</span></span>
+<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> .stack</span></span>
+<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="kw">-</span><span class="at"> .stack-work</span></span>
+<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> publish</span></span>
+<span id="cb3-47"><a href="#cb3-47" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">image</span><span class="kw">:</span><span class="at"> plugins/gh-pages</span></span>
+<span id="cb3-48"><a href="#cb3-48" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">settings</span><span class="kw">:</span></span>
+<span id="cb3-49"><a href="#cb3-49" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">target_branch</span><span class="kw">:</span><span class="at"> gh-pages</span></span>
+<span id="cb3-50"><a href="#cb3-50" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">pages_directory</span><span class="kw">:</span><span class="at"> public/</span></span>
+<span id="cb3-51"><a href="#cb3-51" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">remote_url</span><span class="kw">:</span><span class="at"> https://github.com/zebraNeon/zebraNeon.github.io.git</span></span>
+<span id="cb3-52"><a href="#cb3-52" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">username</span><span class="kw">:</span><span class="at"> zebraNeon</span></span>
+<span id="cb3-53"><a href="#cb3-53" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">password</span><span class="kw">:</span></span>
+<span id="cb3-54"><a href="#cb3-54" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">from_secret</span><span class="kw">:</span><span class="at"> gh_token</span></span>
+<span id="cb3-55"><a href="#cb3-55" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">when</span><span class="kw">:</span></span>
+<span id="cb3-56"><a href="#cb3-56" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">event</span><span class="kw">:</span></span>
+<span id="cb3-57"><a href="#cb3-57" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> promote</span></span>
+<span id="cb3-58"><a href="#cb3-58" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">target</span><span class="kw">:</span></span>
+<span id="cb3-59"><a href="#cb3-59" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> gh-pages</span></span></code></pre></div>
+<p>可以看到在这里我使用了环境变量指定了 <code>.stack</code> 文件夹的位置，将「仓库名 - 分支名」作为缓存文件的键。<code>cache_key</code> 的具体定义方式可以参考 <a href="https://github.com/meltwater/drone-cache/blob/master/DOCS.md#using-cache-key-templates">这段文档</a>。</p>
+    </section>
+</article>
+
+        </main>
+
+        <footer>
+            由
+            <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+            强力驱动
+        </footer>
+    </body>
+</html>
